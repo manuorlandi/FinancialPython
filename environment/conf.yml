@@ -1,0 +1,31 @@
+#**********************************************************************************************************************************
+#*************************************** PROJECT PARAMS ***************************************************************************
+#**********************************************************************************************************************************
+PROJECT_PATH                           : Path.cwd()                                                                           
+DATA_FOLDER                            : data
+API_DATA_SOURCE                        : BINANCE
+SYMBOLS                                : BTC
+TIMEFRAME                              : 1d
+STABLECOIN                             : USDT
+#**********************************************************************************************************************************
+#*************************************** APIs *************************************************************************************
+#**********************************************************************************************************************************
+BINANCE:
+  API                                  : NWsrhdt4IlgVqhsmG9Y5HhKfmymvUs7JoW51ORpwF5Bhmey0bHTRKbi2iiHgc8Ey #T5wwjgIkmihqnEO4qscDvNNNX9eoWoYIx7FHKkVn0vRFaHOtmIJzwMSaHiuayxbX
+  API_URL_HIST_DATA                    : https://api.binance.com/api/v3/uiKlines?
+  API_SYMBOLS_LIST                     : https://api.binance.com/api/v3/exchangeInfo
+  COLUMN_NAMES                         : [OpenTimestamp,Open,High,Low,Close,Volume,CloseTimestamp,Quote asset volume,Number of trades,Taker buy base asset volume,Taker buy quote asset volume,Ignore.]
+  REQ_PARAMS:
+    symbol                             : [BTC]
+    interval                           : [1d]
+    startTime                          : [2009-01-01]
+    endTime                            : [2023-02-17]
+    limit                              : [1000]
+POLYGON:
+  API                                  : t9Hb6jZUizreYPBZWsAFbm8Imn0zdQZU
+  API_URL_HIST_DATA                    : https://api.polygon.io/v3/reference/tickers?market=
+  MARKET                               : crypto
+TWELVEDATA:
+  API                                  : 7574f9ef4be7496e976c0d1652415f34
+  API_URL_HIST_DATA                    : https://api.polygon.io/v3/reference/tickers?market=
+  
