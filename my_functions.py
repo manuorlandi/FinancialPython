@@ -439,24 +439,15 @@ def split_train_validation(
     return df_train, df_val
 
 def return_index_if_exists(df_series, curr_idx, val, pos_crit, max_length):
-    
+
     current_val = val
-
-    if pos_crit:  
-
+    if pos_crit:
         try:
-            
             thing_index = list(el >= current_val for el in df_series[curr_idx+1:]).index(True) +1
-            #print(current_val)
-            #print(list(df_series[curr_idx+1:]))
-            #print(list(el >= current_val for el in df_series[curr_idx+1:]))
-            #print(thing_index)
         except ValueError:
             thing_index = max_length
     else:
-
-        try:
-            
+        try:   
             thing_index = list(el <= current_val for el in df_series[curr_idx+1:]).index(True) +1
         except ValueError:
             thing_index = max_length
