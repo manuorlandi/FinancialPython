@@ -418,7 +418,7 @@ def built_in_feature_importance(
     return cols_to_remove, data_perm_imp
 
 def split_train_validation(
-    df: pd.DataFrame, 
+    df: pd.DataFrame,
     tms,
     threshold: str
 ) -> List[pd.DataFrame]:
@@ -454,97 +454,48 @@ def return_index_if_exists(df_series, curr_idx, val, pos_crit, max_length):
 
     return thing_index
 
-def labelize_output_according_criterion(df: pd.DataFrame, target:list, wrt:str='Close', threshold:float=0.015, risk_reward_ratio:float=0.5, max_trade_length:int=5) -> pd.DataFrame:
-    
+
+def labelize_output_according_criterion2(
+    df,
+    wrt='close',
+    ohlc=['open', 'high', 'low', 'close'],
+    threshold=0.01,
+    risk_reward_ratio=0.5,
+    max_trade_length=2
+):
     df_ = df.copy()
-    positive_criterion = 1 + threshold/risk_reward_ratio
+    positive_criterion = 1 + threshold / risk_reward_ratio
     negative_criterion = 1 - threshold
-    
-    CloseAbovethreshold = []
-    CloseAbovethreshold = []
-    HighAbovethreshold = []
-    LowAbovethreshold = []
-    OpenAbovethreshold = []
-    CloseBelowthreshold = []
-    HighBelowthreshold = []
-    LowBelowthreshold = []
-    OpenBelowthreshold = []
 
-    for idx,row in df_.iterrows():
-        #print(idx)
-        pos_val = positive_criterion*row['Close']
-        neg_val = negative_criterion*row['Close']
-        if idx != df_.index[-1]:
-            #get first value above/below threshold
-            CloseAbovethreshold.append(return_index_if_exists(df_['Close'], idx, pos_val, True, max_trade_length))
-            HighAbovethreshold.append(return_index_if_exists(df_['High'], idx, pos_val, True, max_trade_length))
-            LowAbovethreshold.append(return_index_if_exists(df_['Low'], idx, pos_val, True, max_trade_length))
-            OpenAbovethreshold.append(return_index_if_exists(df_['Open'], idx, pos_val, True, max_trade_length))
-            CloseBelowthreshold.append(return_index_if_exists(df_['Close'], idx, neg_val, False, max_trade_length))
-            HighBelowthreshold.append(return_index_if_exists(df_['High'], idx, neg_val, False, max_trade_length))
-            LowBelowthreshold.append(return_index_if_exists(df_['Low'], idx, neg_val, False, max_trade_length))
-            OpenBelowthreshold.append(return_index_if_exists(df_['Open'], idx, neg_val, False, max_trade_length))
+    # Calculate TP and SL
+    df_['TP'] = df_[wrt] * positive_criterion
+    df_['SL'] = df_[wrt] * negative_criterion
 
-    CloseAbovethreshold.append(0)
-    HighAbovethreshold.append(0)
-    LowAbovethreshold.append(0)
-    OpenAbovethreshold.append(0)
-    CloseBelowthreshold.append(0)
-    HighBelowthreshold.append(0)
-    LowBelowthreshold.append(0)
-    OpenBelowthreshold.append(0)
-
-    df_['CloseAbovethreshold'] = CloseAbovethreshold
-    df_['HighAbovethreshold'] = HighAbovethreshold
-    df_['LowAbovethreshold'] = LowAbovethreshold
-    df_['OpenAbovethreshold'] = OpenAbovethreshold
-    df_['CloseBelowthreshold'] = CloseBelowthreshold
-    df_['HighBelowthreshold'] = HighBelowthreshold
-    df_['LowBelowthreshold'] = LowBelowthreshold
-    df_['OpenBelowthreshold'] = OpenBelowthreshold
-
-    return df_
-
-
-def labelize_output_according_criterion2(df: pd.DataFrame, map_ohlc:dict, wrt:str='Close', target_var:str='signal', threshold:float=0.015, risk_reward_ratio:float=.5, max_trade_length:int=5) -> pd.DataFrame:
-    
-    df_ = df.copy()
-    positive_criterion = 1 + threshold/risk_reward_ratio
-    negative_criterion = 1 - threshold
-    
     min_above = []
     min_below = []
 
-    df_['TP'] = df_[map_ohlc[wrt]]*positive_criterion
-    df_['SL'] = df_[map_ohlc[wrt]]*negative_criterion
+    for idx in range(len(df_)):
+        pos_val = positive_criterion * df_.iloc[idx][wrt]
+        neg_val = negative_criterion * df_.iloc[idx][wrt]
 
-    for idx,row in df_.iterrows():
-
-        pos_val = positive_criterion*row[map_ohlc[wrt]]
-        neg_val = negative_criterion*row[map_ohlc[wrt]]
-
-        if idx != df_.index[-1]:
-            candidates_above_minima = []
-            candidates_below_minima = []
-            for _,v in map_ohlc.items():
-                candidates_above_minima.append(return_index_if_exists(df_[v], idx, pos_val, True, max_trade_length))
-                candidates_below_minima.append(return_index_if_exists(df_[v], idx, neg_val, False, max_trade_length))
+        if idx != len(df_) - 1:
+            candidates_above_minima = [return_index_if_exists(df_[v], idx, pos_val, True, max_trade_length) for v in ohlc]
+            candidates_below_minima = [return_index_if_exists(df_[v], idx, neg_val, False, max_trade_length) for v in ohlc]
 
             min_above.append(min(candidates_above_minima))
             min_below.append(min(candidates_below_minima))
-
-    min_above.append(None)
-    min_below.append(None)
+        else:
+            min_above.append(None)
+            min_below.append(None)
 
     df_['min_above'] = min_above
     df_['min_below'] = min_below
 
-    df_[target_var] = (df_['min_above'].lt(df_['min_below'])) & (df_['min_above'] <= max_trade_length)
-    df_[target_var]=df_[target_var].astype(int)
+    # Generate the signal
+    target = (df_['min_above'] < df_['min_below']) & (df_['min_above'] <= max_trade_length)
+    target = target.astype(int)
 
-    df_ = df_.drop(columns=['min_above','min_below'])
-
-    return df_
+    return target
 
 
 def get_scores(
