@@ -240,6 +240,6 @@ if __name__ == "__main__":
             .alias("short_signal")
         )
 
-    df_orig = df_orig.vstack(tmp_df)
+        df_orig = df_orig.vstack(tmp_df)
 
     df_orig.write_parquet(DATA_PATH / "bybit_data.parquet")
