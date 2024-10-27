@@ -1,22 +1,14 @@
-import sys
-import os
+
 import time
 import polars as pl
 import datetime as dt
-from pathlib import Path
 from pybit.unified_trading import HTTP
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import fin_utilities
-
-print(os.getcwd())
-cfg = fin_utilities.__cfg_reading("pred")
-
-
-PROJECT_DIR = eval(cfg["PROJECT_PATH"])
-DATA_PATH = PROJECT_DIR / cfg["DATA_FOLDER"]
-
-BYBIT_API_KEY = "5u0HfwB5UPJeiQo3WR"
-BYBIT_SECRET_KEY = "hjFn5aEvyuVEZ1dnna6R4s1NS1vw3vZdJFIL"
+from __init__ import (
+    DATA_PATH,
+    SESSION,
+    SYMBOLS_LIST,
+    INTERVAL,
+)
 
 
 def get_tickers(session: HTTP):
@@ -199,34 +191,23 @@ def labelize_output_according_criterion2(
 if __name__ == "__main__":
     # https://bybit-exchange.github.io/docs/api-explorer/v5/market/kline
     start = int(dt.datetime(2023, 1, 1).timestamp() * 1000)
-    interval = 60
-    symbols_list = [
-        "ETHUSDT", "BTCUSDT", "SOLUSDT",
-        "XRPUSDT", "DOGEUSDT", "TRXUSDT",
-        "ADAUSDT", "LTCUSDT", "ATOMUSDT"
-    ]
 
-    session = HTTP(
-        testnet=False,
-        api_key=BYBIT_API_KEY,
-        api_secret=BYBIT_SECRET_KEY,
-    )
-    server_time = session.get_server_time()["time"] / 1000
+    server_time = SESSION.get_server_time()["time"] / 1000
     print(
         "Current server time:",
         dt.datetime.fromtimestamp(server_time).strftime("%Y-%m-%d %H:%M:%S")
     )
 
     df_orig = pl.DataFrame()
-    for symbol in symbols_list:
+    for symbol in SYMBOLS_LIST:
         print(f"Collecting data for {symbol}")
         tmp_df = get_data_from(
-            session=session,
+            session=SESSION,
             category="spot",
             symbol=symbol,
             start=start,
             end=None,
-            interval=interval,
+            interval=INTERVAL,
         )
         tmp_df = tmp_df.with_columns(
             pl.lit(symbol.replace("USDT", "")).alias("symbol")

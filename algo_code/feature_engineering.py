@@ -1,5 +1,3 @@
-import sys
-import os
 import numpy as np
 import datetime as dt
 import polars as pl
@@ -9,28 +7,31 @@ from sklearn.model_selection import TimeSeriesSplit, train_test_split
 from pathlib import Path
 from pybit.unified_trading import HTTP
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import fin_utilities
 import matplotlib.pyplot as plt
 import plotly.express as px
 from statsmodels.graphics.tsaplots import plot_pacf
 from statsmodels.tsa.stattools import pacf, acf
 from scipy.stats import norm
 from typing import Tuple, List
-from fredapi import Fred
 
-fred = Fred(api_key="a2bdf7d81b8f0362f82e976bb92fbdb4")
-
-cfg = fin_utilities.__cfg_reading("pred")
-
-
-PROJECT_DIR = eval(cfg["PROJECT_PATH"])
-DATA_PATH = PROJECT_DIR / cfg["DATA_FOLDER"]
+from __init__ import (
+    FRED_SESSION,
+    DATA_PATH,
+    SYMBOLS_LIST,
+    STR_INTERVAL
+)
 
 START_DATE = dt.datetime(2022, 12, 28)
 print(START_DATE)
 END_DATE = dt.datetime.now()
 print(END_DATE)
+
+# a seconda della scala che voglio utilizzare, cambio il suffisso
+TYPE_SCALE_SUFFIXES = {
+    "pct_change": "_pct_change",
+    "z_score": "_z_score",
+    "diff": "_diff",
+}
 
 
 def split_target_features(
@@ -384,13 +385,13 @@ def calculate_rolling_avgs_by_symbol(
 # STOCK / VIX DATA
 def generate_hourly_dates(start: str, end: str) -> pl.Series:
     # Generate date range
-    date_range = pl.date_range(start=start, end=end, interval="1h")
+    date_range = pl.date_range(start=start, end=end, interval=STR_INTERVAL)
 
     # Convert to Series
     return pl.Series("DATE", date_range)
 
 
-def get_stock_data(tickers, start_date, end_date, interval="1h"):
+def get_stock_data(tickers, start_date, end_date, interval=STR_INTERVAL):
     data = yf.download(
         tickers, start=start_date, end=end_date, interval=interval
     )
@@ -424,7 +425,7 @@ def get_fred_data(series_ids, start_date, end_date):
     data = {}
     all_dates = set()
     for series_id in series_ids:
-        series = fred.get_series(series_id, start_date, end_date)
+        series = FRED_SESSION.get_series(series_id, start_date, end_date)
         series = series.reset_index()
         series.columns = ["date", series_id]
         data[series_id] = series
@@ -461,50 +462,57 @@ def get_macroeconomic_data(start_date, end_date):
     return data
 
 
-if __name__ == "__main__":
-    df_orig = pl.read_parquet(DATA_PATH / "bybit_data.parquet")
-    df = df_orig
-    # a seconda della scala che voglio utilizzare, cambio il suffisso
-    TYPE_SCALE_SUFFIXES = {
-        "pct_change": "_pct_change",
-        "z_score": "_z_score",
-        "diff": "_diff",
-    }
-    type_scale = "pct_change"
-
-    type_scale_suffix = TYPE_SCALE_SUFFIXES[type_scale]
-    tgt_column = f"close{type_scale_suffix}"
-
+def scale_dataframe_by_symbol(
+    df: pl.DataFrame,
+    type_scale: str,
+    type_scale_suffix: str,
+    cols_to_scale: list = ["close", "volume", "turnover"],
+    symbol_col: str = "symbol",
+):
     processed_dfs = []
-
-    for symbol in df["symbol"].unique():
+    for symbol in df[symbol_col].unique():
         # Filter the dataframe for the current symbol
-        tmp_df = df.filter(pl.col("symbol") == symbol)
+        tmp_df = df.filter(pl.col(symbol_col) == symbol)
         # Apply scale_features to the filtered dataframe
         tmp_df = scale_features(
-            tmp_df,
-            ["close", "volume", "turnover"],
+            df=tmp_df,
+            cols=cols_to_scale,
             type_scale=type_scale,
             suffix=type_scale_suffix,
         )
         # Append the processed dataframe to the list
         processed_dfs.append(tmp_df)
 
-    # Concatenate all processed dataframes
-    df = pl.concat(processed_dfs)
+    return processed_dfs
+
+
+if __name__ == "__main__":
+    df = pl.read_parquet(DATA_PATH / "bybit_data.parquet")
+
+    type_scale = "pct_change"
+
+    type_scale_suffix = TYPE_SCALE_SUFFIXES[type_scale]
+    tgt_column = f"close{type_scale_suffix}"
+
+    print("[INFO] Scaling Features...")
+    df = scale_dataframe_by_symbol(
+        df=df,
+        type_scale=type_scale,
+        type_scale_suffix=type_scale_suffix,
+    )
 
     # Drop any null values that might have been introduced
     df = df.drop_nulls()
 
-    print("Calculate PACF lags...")
+    print("[INFO] Calculate PACF lags...")
     lags_pacf = calculate_all_pacfs(
         df, f"close{type_scale_suffix}", 200, alpha=0.4
     )
-    print("Calculate ACF lags...")
+    print("[INFO] Calculate ACF lags...")
     lags_acf = calculate_all_acfs(
         df, f"close{type_scale_suffix}", 200, alpha=0.4
     )
-    print("Calculate common PACF-ACF lags...")
+    print("[INFO] Calculate common PACF-ACF lags...")
     common_lags = list(
         set(common_lags_by_symbol(lags_acf)).intersection(
             set(common_lags_by_symbol(lags_pacf))
@@ -562,15 +570,15 @@ if __name__ == "__main__":
     other_lags = [1, 2, 3, 4, 6, 12, 72]
     all_lags = list(set(common_lags).union(set(other_lags)))
 
-    print("Calculate RSI...")
+    print("[INFO] Calculate RSI...")
     df = calculate_rsi_by_symbol(df, window=14)
-    print("Calculate MACD...")
+    print("[INFO] Calculate MACD...")
     df = calculate_macd_by_symbol(df)
-    print("Calculate Bollinger Bands...")
+    print("[INFO] Calculate Bollinger Bands...")
     df = calculate_bollinger_bands_by_symbol(df)
-    print("Scaling Features...")
+    print("[INFO] Scaling Features...")
     df = scale_features(df, ["upper_band", "lower_band"])
-    print("Calculate Lagged Features...")
+    print("[INFO] Calculate Lagged Features...")
     df = create_lagged_features_by_symbol(
         df=df,
         feature_col=f"close{type_scale_suffix}",
@@ -578,14 +586,8 @@ if __name__ == "__main__":
     )
     df = df.drop_nulls()
 
-    symbols_list = [
-        "ETH", "BTC", "SOL",
-        "XRP", "DOGE", "TRX",
-        "ADA", "LTC", "ATOM"
-    ]
-
     symbol_encoding = {
-        symbol: i for i, symbol in enumerate(symbols_list)
+        symbol: i for i, symbol in enumerate(SYMBOLS_LIST)
     }
 
     df = df.with_columns(
@@ -598,7 +600,7 @@ if __name__ == "__main__":
     data_sp = get_all_data(START_DATE, END_DATE)
     data_sp = data_sp.with_columns(
         pl.col("date")
-        .dt.truncate("1h")
+        .dt.truncate(STR_INTERVAL)
         .dt.replace_time_zone(None)
         .dt.cast_time_unit("us")
         .alias("date"),
@@ -616,7 +618,7 @@ if __name__ == "__main__":
     data_vix = get_vix_data(START_DATE, END_DATE)
     data_vix = data_vix.with_columns(
         pl.col("date")
-        .dt.truncate("1h")
+        .dt.truncate(STR_INTERVAL)
         .dt.replace_time_zone(None)
         .dt.cast_time_unit("us")
         .alias("date"),
@@ -629,7 +631,7 @@ if __name__ == "__main__":
     data_usd = get_stock_data("DX-Y.NYB", START_DATE, END_DATE)
     data_usd = data_usd.with_columns(
         pl.col("date")
-        .dt.truncate("1h")
+        .dt.truncate(STR_INTERVAL)
         .dt.convert_time_zone("UTC")
         .dt.replace_time_zone(None)
         .dt.cast_time_unit("us")
